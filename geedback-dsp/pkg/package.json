@@ -1,0 +1,15 @@
+{
+  "name": "geedback-dsp",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "geedback_dsp_bg.wasm",
+    "geedback_dsp.js",
+    "geedback_dsp.d.ts"
+  ],
+  "main": "geedback_dsp.js",
+  "types": "geedback_dsp.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
