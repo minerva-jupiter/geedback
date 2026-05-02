@@ -100,13 +100,10 @@ const startAudio = async () => {
   // UI Update Loop
   const updateUI = () => {
     if (processor) {
-      // Just a snapshot for UI
-      // In a real DSP, we wouldn't call process() again here,
-      // but for visualization of "current" state it's fine for this test.
+      wasmOutput.textContent = processor.get_latest_output().toFixed(6);
     }
     requestAnimationFrame(updateUI);
   };
   updateUI();
 };
-
 startBtn.addEventListener("click", startAudio);

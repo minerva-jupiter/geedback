@@ -2,6 +2,7 @@
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
 export const __wbg_geedbackprocessor_free: (a: number, b: number) => void;
+export const geedbackprocessor_get_latest_output: (a: number) => number;
 export const geedbackprocessor_new: () => number;
 export const geedbackprocessor_process: (a: number) => number;
 export const geedbackprocessor_set_accel: (a: number, b: number, c: number, d: number) => void;

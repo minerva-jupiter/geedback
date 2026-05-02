@@ -4,6 +4,7 @@
 export class GeedbackProcessor {
     free(): void;
     [Symbol.dispose](): void;
+    get_latest_output(): number;
     constructor();
     process(): number;
     set_accel(x: number, y: number, z: number): void;
@@ -17,6 +18,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_geedbackprocessor_free: (a: number, b: number) => void;
+    readonly geedbackprocessor_get_latest_output: (a: number) => number;
     readonly geedbackprocessor_new: () => number;
     readonly geedbackprocessor_process: (a: number) => number;
     readonly geedbackprocessor_set_accel: (a: number, b: number, c: number, d: number) => void;

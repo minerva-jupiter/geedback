@@ -18,6 +18,7 @@ pub struct GeedbackProcessor {
     phase_z: f64,
 
     sample_rate: f64,
+    latest_output: f64,
 }
 
 #[wasm_bindgen]
@@ -38,7 +39,12 @@ impl GeedbackProcessor {
             phase_y: 0.0,
             phase_z: 0.0,
             sample_rate: 44100.0,
+            latest_output: 0.0,
         }
+    }
+
+    pub fn get_latest_output(&self) -> f64 {
+        self.latest_output
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: f64) {
@@ -80,6 +86,8 @@ impl GeedbackProcessor {
         let out_z = (self.phase_z * 2.0 * std::f64::consts::PI).sin();
 
         // Mix output (sum of 3 oscillators)
-        (out_x + out_y + out_z) / 3.0
+        let out = (out_x + out_y + out_z) / 3.0;
+        self.latest_output = out;
+        out
     }
 }

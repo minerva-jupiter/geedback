@@ -11,6 +11,13 @@ export class GeedbackProcessor {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_geedbackprocessor_free(ptr, 0);
     }
+    /**
+     * @returns {number}
+     */
+    get_latest_output() {
+        const ret = wasm.geedbackprocessor_get_latest_output(this.__wbg_ptr);
+        return ret;
+    }
     constructor() {
         const ret = wasm.geedbackprocessor_new();
         this.__wbg_ptr = ret;
