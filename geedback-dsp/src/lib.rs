@@ -83,7 +83,7 @@ impl GeedbackProcessor {
             phases: [0.0; 3],
             phases_mod: [0.0; 3],
             waveforms: [Waveform::Sine, Waveform::Sine, Waveform::Sine],
-            mixes: [0.6, 0.6, 0.6],
+            mixes: [0.3, 0.3, 0.3],
             sample_rate: 44100.0,
             latest_output: 0.0,
         }
@@ -168,8 +168,8 @@ impl GeedbackProcessor {
         self.s_la_y = self.s_la_y * la_lpf + self.linear_accel_y * la_gain;
         self.s_la_z = self.s_la_z * la_lpf + self.linear_accel_z * la_gain;
 
-        self.s_filter_cutoff = self.s_filter_cutoff * 0.99 + self.touch_x * 0.01;
-        self.s_filter_res = self.s_filter_res * 0.99 + (1.0 - self.touch_y) * 0.01;
+        self.s_filter_cutoff = self.s_filter_cutoff * 0.9995 + self.touch_x * 0.0005;
+        self.s_filter_res = self.s_filter_res * 0.9995 + (1.0 - self.touch_y) * 0.0005;
 
         let freqs = [
             110.0 * 2.0_f64.powf(self.s_g_sin * 2.5), // Osc 1: Y
@@ -218,14 +218,17 @@ impl GeedbackProcessor {
         let a1 = -2.0 * cos_w;
         let a2 = 1.0 - alpha;
 
-        let filtered = (b0 / a0) * mixed_output
+        // Denormal prevention: add a tiny offset to the input
+        let filter_input = mixed_output + 1e-20;
+
+        let filtered = (b0 / a0) * filter_input
             + (b1 / a0) * self.filter_mem[0]
             + (b2 / a0) * self.filter_mem[1]
             - (a1 / a0) * self.filter_mem[2]
             - (a2 / a0) * self.filter_mem[3];
 
         self.filter_mem[1] = self.filter_mem[0];
-        self.filter_mem[0] = mixed_output;
+        self.filter_mem[0] = filter_input;
         self.filter_mem[3] = self.filter_mem[2];
         self.filter_mem[2] = filtered;
 
