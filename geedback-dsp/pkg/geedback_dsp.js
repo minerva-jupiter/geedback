@@ -36,16 +36,8 @@ export class GeedbackProcessor {
      * @param {number} y
      * @param {number} z
      */
-    set_accel(x, y, z) {
-        wasm.geedbackprocessor_set_accel(this.__wbg_ptr, x, y, z);
-    }
-    /**
-     * @param {number} a
-     * @param {number} b
-     * @param {number} g
-     */
-    set_gyro(a, b, g) {
-        wasm.geedbackprocessor_set_gyro(this.__wbg_ptr, a, b, g);
+    set_linear_accel(x, y, z) {
+        wasm.geedbackprocessor_set_linear_accel(this.__wbg_ptr, x, y, z);
     }
     /**
      * @param {number} a
@@ -61,8 +53,36 @@ export class GeedbackProcessor {
     set_sample_rate(sample_rate) {
         wasm.geedbackprocessor_set_sample_rate(this.__wbg_ptr, sample_rate);
     }
+    /**
+     * @param {number} x
+     * @param {number} y
+     */
+    set_touch(x, y) {
+        wasm.geedbackprocessor_set_touch(this.__wbg_ptr, x, y);
+    }
+    /**
+     * @param {number} index
+     * @param {Waveform} wave
+     */
+    set_waveform(index, wave) {
+        wasm.geedbackprocessor_set_waveform(this.__wbg_ptr, index, wave);
+    }
 }
 if (Symbol.dispose) GeedbackProcessor.prototype[Symbol.dispose] = GeedbackProcessor.prototype.free;
+
+/**
+ * @enum {0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}
+ */
+export const Waveform = Object.freeze({
+    Sine: 0, "0": "Sine",
+    Triangle: 1, "1": "Triangle",
+    TriangleSawtooth: 2, "2": "TriangleSawtooth",
+    Sawtooth: 3, "3": "Sawtooth",
+    ReverseSawtooth: 4, "4": "ReverseSawtooth",
+    Square: 5, "5": "Square",
+    WidePulse: 6, "6": "WidePulse",
+    NarrowPulse: 7, "7": "NarrowPulse",
+});
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,

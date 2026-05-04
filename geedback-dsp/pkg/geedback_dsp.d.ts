@@ -7,10 +7,22 @@ export class GeedbackProcessor {
     get_latest_output(): number;
     constructor();
     process(): number;
-    set_accel(x: number, y: number, z: number): void;
-    set_gyro(a: number, b: number, g: number): void;
+    set_linear_accel(x: number, y: number, z: number): void;
     set_orient(a: number, b: number, g: number): void;
     set_sample_rate(sample_rate: number): void;
+    set_touch(x: number, y: number): void;
+    set_waveform(index: number, wave: Waveform): void;
+}
+
+export enum Waveform {
+    Sine = 0,
+    Triangle = 1,
+    TriangleSawtooth = 2,
+    Sawtooth = 3,
+    ReverseSawtooth = 4,
+    Square = 5,
+    WidePulse = 6,
+    NarrowPulse = 7,
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -21,10 +33,11 @@ export interface InitOutput {
     readonly geedbackprocessor_get_latest_output: (a: number) => number;
     readonly geedbackprocessor_new: () => number;
     readonly geedbackprocessor_process: (a: number) => number;
-    readonly geedbackprocessor_set_accel: (a: number, b: number, c: number, d: number) => void;
-    readonly geedbackprocessor_set_gyro: (a: number, b: number, c: number, d: number) => void;
+    readonly geedbackprocessor_set_linear_accel: (a: number, b: number, c: number, d: number) => void;
     readonly geedbackprocessor_set_orient: (a: number, b: number, c: number, d: number) => void;
     readonly geedbackprocessor_set_sample_rate: (a: number, b: number) => void;
+    readonly geedbackprocessor_set_touch: (a: number, b: number, c: number) => void;
+    readonly geedbackprocessor_set_waveform: (a: number, b: number, c: number) => void;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_start: () => void;
 }

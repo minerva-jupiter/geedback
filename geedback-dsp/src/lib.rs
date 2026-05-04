@@ -1,24 +1,58 @@
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
-pub struct GeedbackProcessor {
-    accel_x: f64,
-    accel_y: f64,
-    accel_z: f64,
-    gyro_a: f64,
-    gyro_b: f64,
-    gyro_g: f64,
-    orient_a: f64,
-    orient_b: f64,
-    orient_g: f64,
+#[derive(PartialEq, Clone, Copy)]
+pub enum Waveform {
+    Sine,
+    Triangle,
+    TriangleSawtooth,
+    Sawtooth,
+    ReverseSawtooth,
+    Square,
+    WidePulse,
+    NarrowPulse,
+}
 
-    // DSP state: 3 independent phases for oscillators
-    phase_x: f64,
-    phase_y: f64,
-    phase_z: f64,
+#[wasm_bindgen]
+pub struct GeedbackProcessor {
+    // Primary inputs
+    orient_a: f64, // Z (Alpha)
+    orient_b: f64, // X (Beta)
+    orient_g: f64, // Y (Gamma)
+    linear_accel_x: f64,
+    linear_accel_y: f64,
+    linear_accel_z: f64,
+
+    // Touch inputs (Kaoss Pad)
+    touch_x: f64,
+    touch_y: f64,
+
+    // Smoothed parameters for all 3 axes (sin/cos pairs)
+    s_a_sin: f64,
+    s_a_cos: f64,
+    s_b_sin: f64,
+    s_b_cos: f64,
+    s_g_sin: f64,
+    s_g_cos: f64,
+
+    // Smoothed linear acceleration per axis
+    s_la_x: f64,
+    s_la_y: f64,
+    s_la_z: f64,
+
+    // Oscillator States
+    phases: [f64; 3],
+    phases_mod: [f64; 3], // Dedicated modulator phases
+    waveforms: [Waveform; 3],
+    mixes: [f64; 3],
 
     sample_rate: f64,
     latest_output: f64,
+
+    // Filter state
+    s_filter_cutoff: f64,
+    s_filter_res: f64,
+    filter_mem: [f64; 4], // x1, x2, y1, y2
 }
 
 #[wasm_bindgen]
@@ -26,41 +60,39 @@ impl GeedbackProcessor {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
-            accel_x: 0.0,
-            accel_y: 0.0,
-            accel_z: 0.0,
-            gyro_a: 0.0,
-            gyro_b: 0.0,
-            gyro_g: 0.0,
             orient_a: 0.0,
             orient_b: 0.0,
             orient_g: 0.0,
-            phase_x: 0.0,
-            phase_y: 0.0,
-            phase_z: 0.0,
+            linear_accel_x: 0.0,
+            linear_accel_y: 0.0,
+            linear_accel_z: 0.0,
+            touch_x: 0.5,
+            touch_y: 0.5,
+            s_a_sin: 0.0,
+            s_a_cos: 1.0,
+            s_b_sin: 0.0,
+            s_b_cos: 1.0,
+            s_g_sin: 0.0,
+            s_g_cos: 1.0,
+            s_la_x: 0.0,
+            s_la_y: 0.0,
+            s_la_z: 0.0,
+            s_filter_cutoff: 0.5,
+            s_filter_res: 0.1,
+            filter_mem: [0.0; 4],
+            phases: [0.0; 3],
+            phases_mod: [0.0; 3],
+            waveforms: [Waveform::Sine, Waveform::Sine, Waveform::Sine],
+            mixes: [0.6, 0.6, 0.6],
             sample_rate: 44100.0,
             latest_output: 0.0,
         }
     }
 
-    pub fn get_latest_output(&self) -> f64 {
-        self.latest_output
-    }
-
-    pub fn set_sample_rate(&mut self, sample_rate: f64) {
-        self.sample_rate = sample_rate;
-    }
-
-    pub fn set_accel(&mut self, x: f64, y: f64, z: f64) {
-        self.accel_x = x;
-        self.accel_y = y;
-        self.accel_z = z;
-    }
-
-    pub fn set_gyro(&mut self, a: f64, b: f64, g: f64) {
-        self.gyro_a = a;
-        self.gyro_b = b;
-        self.gyro_g = g;
+    pub fn set_waveform(&mut self, index: usize, wave: Waveform) {
+        if index < 3 {
+            self.waveforms[index] = wave;
+        }
     }
 
     pub fn set_orient(&mut self, a: f64, b: f64, g: f64) {
@@ -69,25 +101,140 @@ impl GeedbackProcessor {
         self.orient_g = g;
     }
 
+    pub fn set_linear_accel(&mut self, x: f64, y: f64, z: f64) {
+        self.linear_accel_x = x;
+        self.linear_accel_y = y;
+        self.linear_accel_z = z;
+    }
+
+    pub fn set_touch(&mut self, x: f64, y: f64) {
+        self.touch_x = x.clamp(0.0, 1.0);
+        self.touch_y = y.clamp(0.0, 1.0);
+    }
+
+    pub fn set_sample_rate(&mut self, sample_rate: f64) {
+        self.sample_rate = sample_rate;
+    }
+
+    fn calculate_wave(&self, phase: f64, wave: Waveform, morph: f64) -> f64 {
+        let m = (morph + 1.0) * 0.5;
+        let p = phase.fract();
+
+        match wave {
+            Waveform::Sine => {
+                let raw = (p * 2.0 * std::f64::consts::PI).sin();
+                if m > 0.5 {
+                    let drive = 1.0 + (m - 0.5) * 2.0;
+                    (raw * drive).tanh()
+                } else {
+                    raw
+                }
+            }
+            Waveform::Triangle => 1.0 - 2.0 * (p + 0.75).fract().abs(),
+            Waveform::TriangleSawtooth => {
+                let tri = 1.0 - 2.0 * (p + 0.75).fract().abs();
+                let saw = 2.0 * p - 1.0;
+                tri * (1.0 - m) + saw * m
+            }
+            Waveform::Sawtooth => 2.0 * p - 1.0,
+            Waveform::ReverseSawtooth => 1.0 - p * 2.0,
+            Waveform::Square | Waveform::WidePulse | Waveform::NarrowPulse => {
+                let width = 0.02 + m * 0.48;
+                if p < width { 1.0 } else { -1.0 }
+            }
+        }
+    }
+
     pub fn process(&mut self) -> f64 {
-        // Map acceleration to audible frequencies (e.g., 220Hz to 880Hz)
-        let freq_x = 220.0 + self.accel_x.abs() * 20.0;
-        let freq_y = 330.0 + self.accel_y.abs() * 20.0;
-        let freq_z = 440.0 + self.accel_z.abs() * 20.0;
+        let rad_a = (self.orient_a / 2.0).to_radians();
+        let rad_b = (self.orient_b / 2.0).to_radians();
+        let rad_g = (self.orient_g / 2.0).to_radians();
 
-        // Update phases
-        self.phase_x = (self.phase_x + freq_x / self.sample_rate) % 1.0;
-        self.phase_y = (self.phase_y + freq_y / self.sample_rate) % 1.0;
-        self.phase_z = (self.phase_z + freq_z / self.sample_rate) % 1.0;
+        let lpf_val = 0.9995;
+        let gain_val = 0.0005;
 
-        // Calculate sine waves
-        let out_x = (self.phase_x * 2.0 * std::f64::consts::PI).sin();
-        let out_y = (self.phase_y * 2.0 * std::f64::consts::PI).sin();
-        let out_z = (self.phase_z * 2.0 * std::f64::consts::PI).sin();
+        // Smooth Orientation
+        self.s_a_sin = self.s_a_sin * lpf_val + rad_a.sin() * gain_val;
+        self.s_a_cos = self.s_a_cos * lpf_val + rad_a.cos() * gain_val;
+        self.s_b_sin = self.s_b_sin * lpf_val + rad_b.sin() * gain_val;
+        self.s_b_cos = self.s_b_cos * lpf_val + rad_b.cos() * gain_val;
+        self.s_g_sin = self.s_g_sin * lpf_val + rad_g.sin() * gain_val;
+        self.s_g_cos = self.s_g_cos * lpf_val + rad_g.cos() * gain_val;
 
-        // Mix output (sum of 3 oscillators)
-        let out = (out_x + out_y + out_z) / 3.0;
-        self.latest_output = out;
-        out
+        // Smooth Linear Accel
+        let la_lpf = 0.995;
+        let la_gain = 0.005;
+        self.s_la_x = self.s_la_x * la_lpf + self.linear_accel_x * la_gain;
+        self.s_la_y = self.s_la_y * la_lpf + self.linear_accel_y * la_gain;
+        self.s_la_z = self.s_la_z * la_lpf + self.linear_accel_z * la_gain;
+
+        self.s_filter_cutoff = self.s_filter_cutoff * 0.99 + self.touch_x * 0.01;
+        self.s_filter_res = self.s_filter_res * 0.99 + (1.0 - self.touch_y) * 0.01;
+
+        let freqs = [
+            110.0 * 2.0_f64.powf(self.s_g_sin * 2.5), // Osc 1: Y
+            164.8 * 2.0_f64.powf(self.s_a_sin * 4.0), // Osc 2: Z
+            220.0 * 2.0_f64.powf(self.s_b_sin * 2.5), // Osc 3: X
+        ];
+
+        let morphs = [self.s_g_cos, self.s_a_cos, self.s_b_cos];
+
+        let fm_depths = [
+            self.s_la_y.abs() * 5.0, // Osc 1: Y
+            self.s_la_z.abs() * 5.0, // Osc 2: Z
+            self.s_la_x.abs() * 5.0, // Osc 3: X
+        ];
+
+        let mut mixed_output = 0.0;
+
+        for i in 0..3 {
+            self.phases_mod[i] = (self.phases_mod[i] + (freqs[i] * 1.5) / self.sample_rate) % 1.0;
+            let modulation =
+                (self.phases_mod[i] * 2.0 * std::f64::consts::PI).sin() * (fm_depths[i] * 2.0);
+            let osc_out =
+                self.calculate_wave(self.phases[i] + modulation, self.waveforms[i], morphs[i]);
+            mixed_output += osc_out * self.mixes[i];
+            self.phases[i] = (self.phases[i] + freqs[i] / self.sample_rate) % 1.0;
+        }
+
+        let mut cutoff_hz = 200.0 * 180.0_f64.powf(self.s_filter_cutoff);
+
+        // Safety: Clamp cutoff to slightly below Nyquist to prevent NaN
+        let max_cutoff = self.sample_rate * 0.45;
+        if cutoff_hz > max_cutoff {
+            cutoff_hz = max_cutoff;
+        }
+
+        let q = 0.707 + self.s_filter_res * 14.3;
+
+        let omega = 2.0 * std::f64::consts::PI * cutoff_hz / self.sample_rate;
+        let alpha = omega.sin() / (2.0 * q);
+        let cos_w = omega.cos();
+
+        let b0 = (1.0 - cos_w) / 2.0;
+        let b1 = 1.0 - cos_w;
+        let b2 = (1.0 - cos_w) / 2.0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * cos_w;
+        let a2 = 1.0 - alpha;
+
+        let filtered = (b0 / a0) * mixed_output
+            + (b1 / a0) * self.filter_mem[0]
+            + (b2 / a0) * self.filter_mem[1]
+            - (a1 / a0) * self.filter_mem[2]
+            - (a2 / a0) * self.filter_mem[3];
+
+        self.filter_mem[1] = self.filter_mem[0];
+        self.filter_mem[0] = mixed_output;
+        self.filter_mem[3] = self.filter_mem[2];
+        self.filter_mem[2] = filtered;
+
+        self.latest_output = filtered;
+        let master_gain = 0.6;
+        (filtered * master_gain).tanh()
+    }
+
+    pub fn get_latest_output(&self) -> f64 {
+        self.latest_output
     }
 }
