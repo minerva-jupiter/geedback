@@ -3,67 +3,21 @@ import init, {
   GeedbackProcessor,
   Waveform,
 } from "../geedback-dsp/pkg/geedback_dsp.js";
+import { renderAbout } from "./about";
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
-
-app.innerHTML = `
-  <div>
-    <h1>Multi-Osc WASM Synth</h1>
-    <button id="start-btn">Start Audio & Sensors</button>
-
-    <canvas id="kaoss-pad"></canvas>
-
-    <div style="margin-top: 20px; padding: 15px; border: 2px solid #ff4444; border-radius: 8px; background: #1a1a1a;">
-      <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-        <strong>DSP Output:</strong> <span id="wasm-output" style="font-family: monospace;">-</span>
-      </div>
-      <div style="font-size: 0.8em; color: #888; margin-bottom: 10px;">
-        Cutoff (X): <span id="touch-x">-</span> | Resonance (Y): <span id="touch-y">-</span>
-      </div>
-
-      <div class="osc-controls">
-        ${[0, 1, 2]
-          .map(
-            (i) => `
-          <div style="margin-bottom: 8px;">
-            <label>Osc ${i + 1} Wave:</label>
-            <select id="osc-${i}-wave" class="wave-select">
-              <option value="Sine">Sine</option>
-              <option value="Triangle">Triangle</option>
-              <option value="TriangleSawtooth">Tri-Saw</option>
-              <option value="Sawtooth">Sawtooth</option>
-              <option value="ReverseSawtooth">Rev-Saw</option>
-              <option value="Square">Square</option>
-              <option value="WidePulse">Wide Pulse</option>
-              <option value="NarrowPulse">Narrow Pulse</option>
-            </select>
-          </div>
-        `,
-          )
-          .join("")}
-      </div>
-    </div>
-
-    <table border="1" style="margin-top: 20px; width: 100%; border-collapse: collapse; font-size: 0.8em; opacity: 0.7;">
-      <tbody id="sensor-table">
-        <tr id="row-accel"><td>Accel</td><td class="x">-</td><td class="y">-</td><td class="z">-</td></tr>
-        <tr id="row-linear"><td>Linear</td><td class="x">-</td><td class="y">-</td><td class="z">-</td></tr>
-        <tr id="row-orient"><td>Orient</td><td class="x">-</td><td class="y">-</td><td class="z">-</td></tr>
-      </tbody>
-    </table>
-  </div>
-`;
-
-const startBtn = document.querySelector<HTMLButtonElement>("#start-btn")!;
-const wasmOutput = document.querySelector<HTMLSpanElement>("#wasm-output")!;
-const canvas = document.querySelector<HTMLCanvasElement>("#kaoss-pad")!;
-const touchXEl = document.querySelector<HTMLSpanElement>("#touch-x")!;
-const touchYEl = document.querySelector<HTMLSpanElement>("#touch-y")!;
 
 let processor: GeedbackProcessor | null = null;
 let audioCtx: AudioContext | null = null;
 let isActive = false;
 let wasmInitialized = false;
+
+// UI Elements (updated in renderHome)
+let startBtn: HTMLButtonElement | null = null;
+let wasmOutput: HTMLSpanElement | null = null;
+let canvas: HTMLCanvasElement | null = null;
+let touchXEl: HTMLSpanElement | null = null;
+let touchYEl: HTMLSpanElement | null = null;
 
 const updateRow = (
   id: string,
@@ -73,12 +27,18 @@ const updateRow = (
 ) => {
   const row = document.getElementById(id);
   if (!row) return;
-  if (x !== null)
-    (row.querySelector(".x") as HTMLElement).textContent = x.toFixed(2);
-  if (y !== undefined && y !== null)
-    (row.querySelector(".y") as HTMLElement).textContent = y.toFixed(2);
-  if (z !== undefined && z !== null)
-    (row.querySelector(".z") as HTMLElement).textContent = z.toFixed(2);
+  if (x !== null) {
+    const xEl = row.querySelector(".x");
+    if (xEl) xEl.textContent = x.toFixed(2);
+  }
+  if (y !== undefined && y !== null) {
+    const yEl = row.querySelector(".y");
+    if (yEl) yEl.textContent = y.toFixed(2);
+  }
+  if (z !== undefined && z !== null) {
+    const zEl = row.querySelector(".z");
+    if (zEl) zEl.textContent = z.toFixed(2);
+  }
 };
 
 const setupWaveformControls = () => {
@@ -86,19 +46,20 @@ const setupWaveformControls = () => {
     const select = document.getElementById(
       `osc-${i}-wave`,
     ) as HTMLSelectElement;
+    if (!select) return;
     select.addEventListener("change", (e) => {
       if (processor) {
         const val = (e.target as HTMLSelectElement).value;
         processor.set_waveform(i, (Waveform as any)[val]);
       }
     });
-    if (i === 0) select.value = "Sine";
-    if (i === 1) select.value = "Sine";
-    if (i === 2) select.value = "Sine";
+    // Restore state if processor already exists
+    // (Simplified: just default to Sine or use processor state if we had getters)
   });
 };
 
 const drawPad = (x: number, y: number) => {
+  if (!canvas) return;
   const ctx = canvas.getContext("2d")!;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -136,10 +97,11 @@ const drawPad = (x: number, y: number) => {
 };
 
 const setupKaossPad = () => {
+  if (!canvas) return;
   let isTouching = false;
 
   const updateTouch = (e: MouseEvent | TouchEvent) => {
-    if (!isActive) return;
+    if (!isActive || !canvas) return;
     const rect = canvas.getBoundingClientRect();
     let clientX, clientY;
 
@@ -147,8 +109,8 @@ const setupKaossPad = () => {
       clientX = e.touches[0].clientX;
       clientY = e.touches[0].clientY;
     } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
+      clientX = (e as MouseEvent).clientX;
+      clientY = (e as MouseEvent).clientY;
     }
 
     const x = (clientX - rect.left) / rect.width;
@@ -160,8 +122,8 @@ const setupKaossPad = () => {
       processor.set_touch(clampedX, clampedY);
     }
 
-    touchXEl.textContent = clampedX.toFixed(2);
-    touchYEl.textContent = clampedY.toFixed(2);
+    if (touchXEl) touchXEl.textContent = clampedX.toFixed(2);
+    if (touchYEl) touchYEl.textContent = clampedY.toFixed(2);
 
     drawPad(clampedX, clampedY);
   };
@@ -214,8 +176,6 @@ const startSynth = async () => {
       await init();
       wasmInitialized = true;
       processor = new GeedbackProcessor();
-      setupWaveformControls();
-      setupKaossPad();
     } catch (e) {
       alert("WASM failed");
       return;
@@ -239,12 +199,18 @@ const startSynth = async () => {
 
   // Sensor Permissions (iOS)
   if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
-    await (DeviceMotionEvent as any).requestPermission();
+    try {
+      await (DeviceMotionEvent as any).requestPermission();
+    } catch (e) {
+      console.error("Permission denied", e);
+    }
   }
 
   isActive = true;
-  startBtn.textContent = "Stop Audio & Sensors";
-  startBtn.classList.add("active");
+  if (startBtn) {
+    startBtn.textContent = "Stop Audio & Sensors";
+    startBtn.classList.add("active");
+  }
 };
 
 const stopSynth = async () => {
@@ -253,17 +219,95 @@ const stopSynth = async () => {
     await audioCtx.close();
     audioCtx = null;
   }
-  startBtn.textContent = "Start Audio & Sensors";
-  startBtn.classList.remove("active");
+  if (startBtn) {
+    startBtn.textContent = "Start Audio & Sensors";
+    startBtn.classList.remove("active");
+  }
 };
 
-startBtn.addEventListener("click", () => {
-  if (!isActive) {
-    startSynth();
+const renderHome = () => {
+  app.innerHTML = `
+    <div>
+      <nav style="text-align: right;">
+        <a href="#about">About</a>
+      </nav>
+      <h1>Geedback</h1>
+      <p>Multi-oscillator synthesizer feedback of gravity for Smartphones</p>
+      <button id="start-btn">${isActive ? "Stop Audio & Sensors" : "Start Audio & Sensors"}</button>
+
+      <canvas id="kaoss-pad"></canvas>
+
+      <div style="margin-top: 20px; padding: 15px; border: 2px solid #ff4444; border-radius: 8px; background: #1a1a1a;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <strong>DSP Output:</strong> <span id="wasm-output" style="font-family: monospace;">-</span>
+        </div>
+        <div style="font-size: 0.8em; color: #888; margin-bottom: 10px;">
+          Cutoff (X): <span id="touch-x">-</span> | Resonance (Y): <span id="touch-y">-</span>
+        </div>
+
+        <div class="osc-controls">
+          ${[0, 1, 2]
+            .map(
+              (i) => `
+            <div style="margin-bottom: 8px;">
+              <label>Osc ${i + 1} Wave:</label>
+              <select id="osc-${i}-wave" class="wave-select">
+                <option value="Sine">Sine</option>
+                <option value="Triangle">Triangle</option>
+                <option value="TriangleSawtooth">Tri-Saw</option>
+                <option value="Sawtooth">Sawtooth</option>
+                <option value="ReverseSawtooth">Rev-Saw</option>
+                <option value="Square">Square</option>
+                <option value="WidePulse">Wide Pulse</option>
+                <option value="NarrowPulse">Narrow Pulse</option>
+              </select>
+            </div>
+          `,
+            )
+            .join("")}
+        </div>
+      </div>
+
+      <table border="1" style="margin-top: 20px; width: 100%; border-collapse: collapse; font-size: 0.8em; opacity: 0.7;">
+        <tbody id="sensor-table">
+          <tr id="row-accel"><td>Accel</td><td class="x">-</td><td class="y">-</td><td class="z">-</td></tr>
+          <tr id="row-linear"><td>Linear</td><td class="x">-</td><td class="y">-</td><td class="z">-</td></tr>
+          <tr id="row-orient"><td>Orient</td><td class="x">-</td><td class="y">-</td><td class="z">-</td></tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  startBtn = document.querySelector<HTMLButtonElement>("#start-btn")!;
+  wasmOutput = document.querySelector<HTMLSpanElement>("#wasm-output")!;
+  canvas = document.querySelector<HTMLCanvasElement>("#kaoss-pad")!;
+  touchXEl = document.querySelector<HTMLSpanElement>("#touch-x")!;
+  touchYEl = document.querySelector<HTMLSpanElement>("#touch-y")!;
+
+  if (isActive) startBtn.classList.add("active");
+
+  startBtn.addEventListener("click", () => {
+    if (!isActive) {
+      startSynth();
+    } else {
+      stopSynth();
+    }
+  });
+
+  setupWaveformControls();
+  setupKaossPad();
+};
+
+const router = () => {
+  const hash = window.location.hash;
+  if (hash === "#about") {
+    renderAbout(app);
   } else {
-    stopSynth();
+    renderHome();
   }
-});
+};
+
+window.addEventListener("hashchange", router);
 
 // Setup global event listeners once
 window.addEventListener("devicemotion", (e) => {
@@ -284,8 +328,11 @@ window.addEventListener("deviceorientation", (e) => {
 });
 
 const uiLoop = () => {
-  if (processor && isActive)
+  if (processor && isActive && wasmOutput)
     wasmOutput.textContent = processor.get_latest_output().toFixed(6);
   requestAnimationFrame(uiLoop);
 };
+
+// Start
+router();
 uiLoop();
