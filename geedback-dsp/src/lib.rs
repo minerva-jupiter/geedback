@@ -180,9 +180,9 @@ impl GeedbackProcessor {
         let morphs = [self.s_g_cos, self.s_a_cos, self.s_b_cos];
 
         let fm_depths = [
-            self.s_la_y.abs() * 4.0, // Osc 1: Y (Significantly increased)
-            self.s_la_z.abs() * 4.0, // Osc 2: Z
-            self.s_la_x.abs() * 4.0, // Osc 3: X
+            self.s_la_y.abs() * 50.0, // Osc 1: Y (Extremely high depth)
+            self.s_la_z.abs() * 50.0, // Osc 2: Z
+            self.s_la_x.abs() * 50.0, // Osc 3: X
         ];
 
         let mut mixed_output = 0.0;
@@ -190,7 +190,7 @@ impl GeedbackProcessor {
         for i in 0..3 {
             self.phases_mod[i] = (self.phases_mod[i] + (freqs[i] * 1.5) / self.sample_rate) % 1.0;
             let modulation =
-                (self.phases_mod[i] * 2.0 * std::f64::consts::PI).sin() * (fm_depths[i] * 2.0);
+                (self.phases_mod[i] * 2.0 * std::f64::consts::PI).sin() * (fm_depths[i] * 5.0);
             let osc_out =
                 self.calculate_wave(self.phases[i] + modulation, self.waveforms[i], morphs[i]);
             mixed_output += osc_out * self.mixes[i];
