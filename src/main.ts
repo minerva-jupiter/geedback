@@ -171,6 +171,20 @@ const setupKaossPad = () => {
 };
 
 const startSynth = async () => {
+  // 1. Request Sensor Permissions (iOS 13+) - MUST be first to keep user gesture context
+  try {
+    if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
+      await (DeviceMotionEvent as any).requestPermission();
+    }
+    if (
+      typeof (DeviceOrientationEvent as any).requestPermission === "function"
+    ) {
+      await (DeviceOrientationEvent as any).requestPermission();
+    }
+  } catch (e) {
+    console.error("Sensor Permission Error:", e);
+  }
+
   if (!wasmInitialized) {
     try {
       await init();
@@ -196,15 +210,6 @@ const startSynth = async () => {
   };
   scriptNode.connect(audioCtx.destination);
   if (audioCtx.state === "suspended") await audioCtx.resume();
-
-  // Sensor Permissions (iOS)
-  if (typeof (DeviceMotionEvent as any).requestPermission === "function") {
-    try {
-      await (DeviceMotionEvent as any).requestPermission();
-    } catch (e) {
-      console.error("Permission denied", e);
-    }
-  }
 
   isActive = true;
   if (startBtn) {
